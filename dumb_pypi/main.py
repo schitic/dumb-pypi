@@ -203,7 +203,7 @@ class Package(collections.namedtuple('Package', (
                         for line in f.readlines():
                             line = line.strip('\n')
                             deps.append(line)
-        return_info['dependencies'] = deps
+        return_info['dependencies'] = [x.lower() for x in deps]
         return return_info
 
     @classmethod
@@ -299,7 +299,7 @@ def build_repo(packages, output_path, packages_url, title, logo, logo_width):
         for dep in deps:
             if not nodes.get(dep, None):
                 nodes[dep] = []
-            nodes[package_name].append(dep.lower())
+            nodes[package_name].append(dep)
         # /simple/{package}/index.html
         with atomic_write(os.path.join(package_dir, 'index.html')) as f:
             f.write(jinja_env.get_template('package.html').render(
