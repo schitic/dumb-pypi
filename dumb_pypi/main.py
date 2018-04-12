@@ -167,6 +167,13 @@ class Package(collections.namedtuple('Package', (
                 return_info[attribute].append(value)
         return return_info
 
+    def to_dict(self):
+        to_return = {}
+        for prop in self._fields:
+           to_return[prop] = getattr(self, prop)
+        for key in ['description', 'author', 'home_page']:
+            to_return[key] = self.update_info[key][0]
+        return to_return
 
     @property
     def update_info(self):
@@ -255,8 +262,8 @@ def atomic_write(path):
 def _format_datetime(dt):
     return dt.strftime('%Y-%m-%d %H:%M:%S')
 
-def _remove_tmp_files(path):
-    tmp_files = [f for f in os.listdir(path) if f.startswith('.index.html')]
+def _remove_tmp_files(path, prefix='.index.html'):
+    tmp_files = [f for f in os.listdir(path) if f.startswith(prefix)]
     for f in tmp_files:
         os.remove(os.path.join(path, f))
 
@@ -283,6 +290,12 @@ def build_repo(packages, output_path, packages_url, title, logo, logo_width):
             logo=logo,
             logo_width=logo_width,
         ))
+
+    for_json = [sorted(packages[package])[-1].to_dict()
+                for package in packages]
+    with atomic_write(os.path.join(output_path, 'index.json')) as f:
+        f.write(json.dumps(for_json))
+    _remove_tmp_files(output_path, prefix='.index.json')
     _remove_tmp_files(output_path)
     # /simple/index.html
     with atomic_write(os.path.join(simple, 'index.html')) as f:
