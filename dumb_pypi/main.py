@@ -35,7 +35,7 @@ def emailParser(input):
     return ', '.join(return_value)
 
 def dependencyParser(input):
-    if input in local_projects:
+    if _updateNodeName(input) in local_projects:
         link = '../%s' % input
     else:
         link = 'https://pypi.python.org/pypi/%s' % input
@@ -230,7 +230,7 @@ class Package(collections.namedtuple('Package', (
 
 
         name, version = guess_name_version_from_filename(filename)
-        local_projects.add(name)
+        local_projects.add(_updateNodeName(name))
         return cls(
             filename=filename,
             name=packaging.utils.canonicalize_name(name),
@@ -314,12 +314,20 @@ def build_repo(packages, output_path, packages_url, title, logo, logo_width):
                     reverse=True,
                 )
         deps = versions[0].update_info['dependencies']
-        if not nodes.get(package_name, None):
-            nodes[package_name] = []
+        node_name = _updateNodeName(package_name)
+        if node_name and not nodes.get(node_name, None):
+            nodes[node_name] = {
+                'is_local': True,
+                'deps': set()
+            }
         for dep in deps:
-            if not nodes.get(dep, None):
-                nodes[dep] = []
-            nodes[package_name].append(dep)
+            dep_name = _updateNodeName(dep)
+            if dep_name and not nodes.get(dep_name, None):
+                nodes[dep_name] = {
+                    'is_local': dep_name in local_projects,
+                    'deps': set()
+                }
+            nodes[node_name]['deps'].add(dep_name)
         # /simple/{package}/index.html
         with atomic_write(os.path.join(package_dir, 'index.html')) as f:
             f.write(jinja_env.get_template('package.html').render(
@@ -329,14 +337,26 @@ def build_repo(packages, output_path, packages_url, title, logo, logo_width):
                 packages_url=packages_url,
             ))
         _remove_tmp_files(package_dir)
-    for node in nodes.keys():
-        dot.node(node)
-        for link in nodes[node]:
-            dot.edge(node, link)
+    for node_name in nodes.keys():
+        if nodes[node_name]['is_local']:
+            dot.node(node_name, shape='box')
+        else:
+            dot.node(node_name)
+        for link in nodes[node_name]['deps']:
+            if link == "":
+                continue
+            dot.edge(node_name, link)
     output_path_dot = '%s/deps.dot' % output_path
     output_path_png = open('%s/deps.png' % output_path, 'w')
     dot.save(output_path_dot)
     subprocess.call(['dot','-Tpng', output_path_dot], stdout=output_path_png)
+
+def _updateNodeName(node):
+    node = node.lower()
+    node = node.replace('=', '|').replace('<', '|').replace('>', '|')
+    node = node.replace('[', '').replace(']', '')
+    node = node.split('|')[0].strip()
+    return node
 
 def _lines_from_path(path):
     f = sys.stdin if path == '-' else open(path)
