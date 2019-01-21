@@ -172,7 +172,10 @@ class Package(collections.namedtuple('Package', (
         for prop in self._fields:
            to_return[prop] = getattr(self, prop)
         for key in ['description', 'author', 'home_page']:
-            to_return[key] = self.update_info[key][0]
+            try:
+                to_return[key] = self.update_info[key][0]
+            except:
+                pass
         return to_return
 
     @property
@@ -365,7 +368,11 @@ def _lines_from_path(path):
 
 def _create_packages(package_infos):
     packages = collections.defaultdict(set)
+    global repo_path
     for package_info in package_infos:
+        packages_parse = []
+        with open(os.path.join(repo_path, 'packages.json'), 'r') as f:
+            packages_parse = json.loads(f.read())
         try:
             package = Package.create(**package_info)
         except ValueError as ex:
@@ -373,11 +380,21 @@ def _create_packages(package_infos):
             print('{} (skipping package)'.format(ex), file=sys.stderr)
         else:
             packages[package.name].add(Package.create(**package_info))
-
+            tmp = {
+                'filename': package_info['filename'],
+                'path': package_info['path']}
+            packages_parse.append(tmp)
+            with open(os.path.join(repo_path, 'packages.json'), 'w') as f:
+                f.write(json.dumps(packages_parse))
     return packages
 
+repo_path = None
 
 def package_list_from_path(path):
+    global repo_path
+    repo_path = path
+    with open(os.path.join(path, 'packages.json'), 'r') as f:
+        packages_parse = json.loads(f.read())
     if not path.endswith('/'):
         path = path + '/'
     files_name = []
@@ -385,10 +402,11 @@ def package_list_from_path(path):
         for name in files:
             if os.path.isfile(os.path.join(root, name)) and name.endswith(
                     ('tar.gz', 'tar.bz2', 'whl')):
-                files_name.append({
+               tmp = {
                     'filename': name,
-                    'path': os.path.join(root.replace(path, ''), name),
-                })
+                    'path': os.path.join(root.replace(path, ''), name)}
+               if tmp not in packages_parse:
+                    files_name.append(tmp)
     return _create_packages({'filename': line['filename'],
                              'hash': md5(os.path.join(path, line['path'])),
                              'path': line['path'],
