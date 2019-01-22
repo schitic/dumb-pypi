@@ -47,16 +47,34 @@
       </div>
     </div>
       <div class="container">
+            <h3>LHCb packages</h3>
             {% for package, latest_version in packages %}
-                      <div class="row alert alert-primary" data-name="{{package}}">
-                <a href="simple/{{package}}/">
-                    {% set info = latest_version.update_info %}
-                    <strong>{{package}}</strong></a>
-                    {% if info|hasKey('summary') %}
-                        : {{ info['summary'][0] }}
-                    {% endif %} &nbsp;(Latest version: {{latest_version.version}})
+                {% if package in mirror_projects %}
+                {% else %}
+                    <div class="row alert alert-primary" data-name="{{package}}">
+                          <a href="simple/{{package}}/">
+                              {% set info = latest_version.update_info %}
+                              <strong>{{package}}</strong></a>
+                          {% if info|hasKey('summary') %}
+                                : {{ info['summary'][0] }}
+                          {% endif %} &nbsp;(Latest version: {{latest_version.version}})
                       </div>
+                {% endif %}
+              {% endfor %}
+          <h3>Mirrored packages</h3>
+              {% for package, latest_version in packages %}
+                 {% if package in mirror_projects %}
+                        <div class="row alert alert-primary" data-name="{{package}}">
+                              <a href="simple/{{package}}/">
+                                  {% set info = latest_version.update_info %}
+                                  <strong>{{package}}</strong></a>
+                              {% if info|hasKey('summary') %}
+                                    : {{ info['summary'][0] }}
+                              {% endif %} &nbsp;(Latest version: {{latest_version.version}})
+                          </div>
+                    {% endif %}
             {% endfor %}
+
           <a href="deps.png"><img src="deps.png" style="width: 100%" /></a>
         </div>
 

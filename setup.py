@@ -20,6 +20,7 @@ setup(
     entry_points={
         'console_scripts': (
             'dumb-pypi = dumb_pypi.main:main',
+            'dumb-mirror = dumb_pypi.mirror:main',
         ),
     },
     package_data={'dumb_pypi': ('templates/*',)},

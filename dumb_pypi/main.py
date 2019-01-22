@@ -230,10 +230,10 @@ class Package(collections.namedtuple('Package', (
         if not re.match('[a-zA-Z0-9_\-\.\+]+$', filename) or '..' in filename:
             raise ValueError('Unsafe package name: {}'.format(filename))
 
-
-
         name, version = guess_name_version_from_filename(filename)
-        local_projects.add(_updateNodeName(name))
+        if not path.startswith('mirror'):
+            local_projects.add(_updateNodeName(name))
+
         return cls(
             filename=filename,
             name=packaging.utils.canonicalize_name(name),
@@ -292,6 +292,7 @@ def build_repo(packages, output_path, packages_url, title, logo, logo_width):
             ),
             logo=logo,
             logo_width=logo_width,
+            mirror_projects=sorted(package for package in packages if sorted(packages[package])[-1].path.startswith('mirror'))
         ))
 
     for_json = [sorted(packages[package])[-1].to_dict()
@@ -318,19 +319,20 @@ def build_repo(packages, output_path, packages_url, title, logo, logo_width):
                 )
         deps = versions[0].update_info['dependencies']
         node_name = _updateNodeName(package_name)
-        if node_name and not nodes.get(node_name, None):
-            nodes[node_name] = {
-                'is_local': True,
-                'deps': set()
-            }
-        for dep in deps:
-            dep_name = _updateNodeName(dep)
-            if dep_name and not nodes.get(dep_name, None):
-                nodes[dep_name] = {
-                    'is_local': dep_name in local_projects,
+        if len([version.path for version in versions if version.path.startswith('mirror')]) == 0:
+            if node_name and not nodes.get(node_name, None):
+                nodes[node_name] = {
+                    'is_local': True,
                     'deps': set()
                 }
-            nodes[node_name]['deps'].add(dep_name)
+            for dep in deps:
+                dep_name = _updateNodeName(dep)
+                if dep_name and not nodes.get(dep_name, None):
+                    nodes[dep_name] = {
+                        'is_local': dep_name in local_projects,
+                        'deps': set()
+                    }
+                nodes[node_name]['deps'].add(dep_name)
         # /simple/{package}/index.html
         with atomic_write(os.path.join(package_dir, 'index.html')) as f:
             f.write(jinja_env.get_template('package.html').render(
@@ -349,6 +351,18 @@ def build_repo(packages, output_path, packages_url, title, logo, logo_width):
             if link == "":
                 continue
             dot.edge(node_name, link)
+    # save the parse packages
+    packages_parse = []
+    for _, versions in packages.items():
+        for version in versions:
+            packages_parse.append({
+                'filename': version.filename,
+                'hash': version.hash,
+                'path': version.path,
+                'original_source_path': version.original_source_path
+            })
+    with open(os.path.join(repo_path, 'packages.json'), 'w') as f:
+        f.write(json.dumps(packages_parse))
     output_path_dot = '%s/deps.dot' % output_path
     output_path_png = open('%s/deps.png' % output_path, 'w')
     dot.save(output_path_dot)
@@ -370,9 +384,6 @@ def _create_packages(package_infos):
     packages = collections.defaultdict(set)
     global repo_path
     for package_info in package_infos:
-        packages_parse = []
-        with open(os.path.join(repo_path, 'packages.json'), 'r') as f:
-            packages_parse = json.loads(f.read())
         try:
             package = Package.create(**package_info)
         except ValueError as ex:
@@ -380,21 +391,19 @@ def _create_packages(package_infos):
             print('{} (skipping package)'.format(ex), file=sys.stderr)
         else:
             packages[package.name].add(Package.create(**package_info))
-            tmp = {
-                'filename': package_info['filename'],
-                'path': package_info['path']}
-            packages_parse.append(tmp)
-            with open(os.path.join(repo_path, 'packages.json'), 'w') as f:
-                f.write(json.dumps(packages_parse))
     return packages
 
 repo_path = None
+parse_paths = []
 
 def package_list_from_path(path):
     global repo_path
+    global parse_paths
     repo_path = path
+    packages_parse = []
     with open(os.path.join(path, 'packages.json'), 'r') as f:
         packages_parse = json.loads(f.read())
+    parse_paths = [file['path'] for file in packages_parse]
     if not path.endswith('/'):
         path = path + '/'
     files_name = []
@@ -405,14 +414,16 @@ def package_list_from_path(path):
                tmp = {
                     'filename': name,
                     'path': os.path.join(root.replace(path, ''), name)}
-               if tmp not in packages_parse:
+               if tmp['path'] not in parse_paths:
                     files_name.append(tmp)
-    return _create_packages({'filename': line['filename'],
-                             'hash': md5(os.path.join(path, line['path'])),
-                             'path': line['path'],
-                             'original_source_path':os.path.join(path,
-                                                                 line['path'])}
-                            for line in files_name)
+    for line in files_name:
+        packages_parse.append({
+            'filename': line['filename'],
+            'hash': md5(os.path.join(path, line['path'])),
+            'path': line['path'],
+            'original_source_path':os.path.join(path,line['path'])
+        })
+    return _create_packages(packages_parse)
 
 
 def package_list(path):
