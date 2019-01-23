@@ -21,6 +21,7 @@ setup(
         'console_scripts': (
             'dumb-pypi = dumb_pypi.main:main',
             'dumb-mirror = dumb_pypi.mirror:main',
+            'dumb-pypiupload = dumb_pypi.pypiupload:main',
         ),
     },
     package_data={'dumb_pypi': ('templates/*',)},

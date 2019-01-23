@@ -13,7 +13,8 @@ def getLocalPacages(requirments_folder):
         pool_folder = os.path.join(pool_folder, foloder)
     local_packages = [package.lower()
                       for package in os.listdir(pool_folder)
-                      if package not in ['mirror', 'packages.json']]
+                      if package not in ['mirror', 'packages.json',
+                                         'pypi.json']]
     return local_packages
 
 
