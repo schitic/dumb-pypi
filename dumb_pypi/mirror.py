@@ -33,13 +33,23 @@ def cleanUp(tempFolder):
 
 def resolveDependecies(package, templFolder):
     print("Processing deps for %s" % package)
-    command = 'pip download ' \
+    with open("%s/requirments.in" % templFolder, 'w') as f:
+        f.write(package)
+    command = 'pip-compile ' \
               '--extra-index-url https://cern.ch/lhcb-pypi/simple/ ' \
-              '--trusted-host cern.ch -d %s %s ' % (templFolder, package)
+              '--trusted-host cern.ch %s/requirments.in' % templFolder
     command = command.split()
     p = subprocess.Popen(command, stdout=subprocess.PIPE)
     out = p.communicate()[0]
-    print(out)
+    res = []
+    for line in out.split(b'\n'):
+        if line.startswith(b'--') or line.startswith(b'#'):
+            continue
+        if not len(line):
+            continue
+        pkg = line.split(b'==')[0]
+        res.append(pkg)
+    return res
 
 
 def getPackageName(package):
@@ -50,21 +60,17 @@ def getPackageName(package):
     }
 
 
-def organizeDependecies(tempFolder, local_packages):
+def organizeDependecies(tempFolder, local_packages, deps):
     print("Moving to folders...")
-    for package in os.listdir(tempFolder):
+    for package in deps:
         if os.path.isdir(os.path.join(tempFolder, package)):
             continue
-        metadata = getPackageName(package)
-        name = metadata['name'].lower()
+        name = package.lower()
         if name in local_packages:
-            os.remove(os.path.join(tempFolder, package))
             continue
         package_folder = os.path.join(tempFolder, name)
         if not os.path.exists(package_folder):
             os.mkdir(package_folder)
-        shutil.move(os.path.join(tempFolder, package),
-                    os.path.join(package_folder, package))
 
 
 def getPackageNameFromUrl(url):
@@ -75,22 +81,25 @@ def getPackageNameFromUrl(url):
 
 
 def downlaodFile(url, name, package_folder, eos_path=None):
-    dest_name = os.path.join(package_folder, name)
-    if eos_path:
-        eos_des = os.path.join(eos_path, name)
-    else:
-        eos_des = None
-    if os.path.exists(dest_name):
-        print("File %s already exists. Skipping..." % dest_name)
-        return
-    if eos_des and os.path.exists(eos_des):
-        print("File %s already exists on EOS. Skipping..." % dest_name)
-        return
-    print("Downloading %s to %s" % (url, dest_name))
-    response = urllib2.urlopen(url)
-    data = response.read()
-    with open(dest_name, 'w') as f:
-        f.write(data)
+    try:
+        dest_name = os.path.join(package_folder, name)
+        if eos_path:
+            eos_des = os.path.join(eos_path, name)
+        else:
+            eos_des = None
+        if os.path.exists(dest_name):
+            print("File %s already exists. Skipping..." % dest_name)
+            return
+        if eos_des and os.path.exists(eos_des):
+            print("File %s already exists on EOS. Skipping..." % dest_name)
+            return
+        print("Downloading %s to %s" % (url, dest_name))
+        response = urllib2.urlopen(url)
+        data = response.read()
+        with open(dest_name, 'wb') as f:
+            f.write(data)
+    except Exception as e:
+        print(e)
 
 
 def downloadAllPlatforms(tempFolder, eosFolder=None):
@@ -98,18 +107,22 @@ def downloadAllPlatforms(tempFolder, eosFolder=None):
         if not os.path.isdir(os.path.join(tempFolder, package)):
             continue
         print("Getting all versions for %s" % package)
-        url = 'https://pypi.org/simple/%s/' % package
-        response = urllib2.urlopen(url)
-        html = response.read().decode('utf-8')
-        urls = re.findall(r'href=[\'"]?([^\'" >]+)', html)
-        for url in urls:
-            name = getPackageNameFromUrl(url)
-            if eosFolder:
-                eos_path = os.path.join(eosFolder, package)
-            else:
-                eos_path = None
-            downlaodFile(url, name, os.path.join(tempFolder, package),
-                         eos_path=eos_path)
+        try:
+            url = 'https://pypi.org/simple/%s/' % package
+            response = urllib2.urlopen(url)
+            html = response.read().decode('utf-8')
+            urls = re.findall(r'href=[\'"]?([^\'" >]+)', html)
+            for url in urls:
+                name = getPackageNameFromUrl(url)
+                if eosFolder:
+                    eos_path = os.path.join(eosFolder, package)
+                else:
+                    eos_path = None
+                downlaodFile(url, name, os.path.join(tempFolder, package),
+                             eos_path=eos_path)
+        except:
+            shutil.rmtree(os.path.join(tempFolder, package))
+            continue
 
 
 def moveToEos(tempFolder, eos_path):
@@ -129,10 +142,13 @@ def moveToEos(tempFolder, eos_path):
 def main():
     tempFolder = setup()
     eos_path = '/eos/project/l/lhcbwebsites/www/lhcb-pypi/pool/mirror'
-    local_packages = getLocalPacages(eos_path)
+    local_packages = set(getLocalPacages(eos_path))
+    all_deps = set()
     for package in local_packages:
-        resolveDependecies(package, tempFolder)
-    organizeDependecies(tempFolder, local_packages)
+        deps = resolveDependecies(package, tempFolder)
+        for dep in deps:
+            all_deps.add(dep.decode())
+    organizeDependecies(tempFolder, local_packages, all_deps)
     downloadAllPlatforms(tempFolder, eos_path)
     moveToEos(tempFolder, eos_path)
     cleanUp(tempFolder)
