@@ -18,19 +18,6 @@ def getLocalPacages(requirments_folder):
     return local_packages
 
 
-def setup(tempFolder=None):
-    if tempFolder is None:
-        tempFolder = tempfile.mkdtemp()
-    else:
-        if not os.path.exists(tempFolder):
-            os.mkdir(tempFolder)
-    return tempFolder
-
-
-def cleanUp(tempFolder):
-    shutil.rmtree(tempFolder)
-
-
 def resolveDependecies(package, templFolder):
     print("Processing deps for %s" % package)
     with open("%s/requirments.in" % templFolder, 'w') as f:
@@ -140,18 +127,17 @@ def moveToEos(tempFolder, eos_path):
 
 
 def main():
-    tempFolder = setup()
-    eos_path = '/eos/project/l/lhcbwebsites/www/lhcb-pypi/pool/mirror'
-    local_packages = set(getLocalPacages(eos_path))
-    all_deps = set()
-    for package in local_packages:
-        deps = resolveDependecies(package, tempFolder)
-        for dep in deps:
-            all_deps.add(dep.decode())
-    organizeDependecies(tempFolder, local_packages, all_deps)
-    downloadAllPlatforms(tempFolder, eos_path)
-    moveToEos(tempFolder, eos_path)
-    cleanUp(tempFolder)
+    with tempfile.TemporaryDirectory() as tempFolder:
+        eos_path = '/eos/project/l/lhcbwebsites/www/lhcb-pypi/pool/mirror'
+        local_packages = set(getLocalPacages(eos_path))
+        all_deps = set()
+        for package in local_packages:
+            deps = resolveDependecies(package, tempFolder)
+            for dep in deps:
+                all_deps.add(dep.decode())
+        organizeDependecies(tempFolder, local_packages, all_deps)
+        downloadAllPlatforms(tempFolder, eos_path)
+        moveToEos(tempFolder, eos_path)
 
 
 if __name__ == '__main__':
