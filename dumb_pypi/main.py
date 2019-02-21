@@ -22,6 +22,7 @@ from graphviz import Digraph
 import subprocess
 
 
+
 jinja_env = jinja2.Environment(
     loader=jinja2.PackageLoader('dumb_pypi', 'templates'),
     autoescape=True,
@@ -187,32 +188,32 @@ class Package(collections.namedtuple('Package', (
             return
         if not os.path.exists(self.original_source_path):
             return
-        tmp = tempfile.mktemp()
-        if self.original_source_path.endswith('.whl'):
-            zipFile = ZipFile(self.original_source_path)
-            for member in zipFile.namelist():
-                if member.endswith('METADATA'):
-                    zipFile.extract(member, tmp)
-                    return_info = self._get_metadata(os.path.join(tmp, member))
-                if 'metadata.json' in member:
-                    zipFile.extract(member, tmp)
-                    with open(os.path.join(tmp, member), 'r') as f:
-                        row_data = json.loads(f.read())
-                        deps = row_data['run_requires'][0].get('requires',[])
-        else:
-            tar = tarfile.open(self.original_source_path)
-            for member in tar.getmembers():
-                if 'PKG-INFO' in member.name and not info_found: # PKG-INFO is also in the egg-info
-                    tar.extract(member, tmp)
-                    return_info = self._get_metadata(
-                            os.path.join(tmp, member.name))
-                    info_found = True
-                if 'requires' in member.name:
-                    tar.extract(member, tmp)
-                    with open(os.path.join(tmp, member.name), 'r') as f:
-                        for line in f.readlines():
-                            line = line.strip('\n')
-                            deps.append(line)
+        with tempfile.TemporaryDirectory() as tmp:
+            if self.original_source_path.endswith('.whl'):
+                zipFile = ZipFile(self.original_source_path)
+                for member in zipFile.namelist():
+                    if member.endswith('METADATA'):
+                        zipFile.extract(member, tmp)
+                        return_info = self._get_metadata(os.path.join(tmp, member))
+                    if 'metadata.json' in member:
+                        zipFile.extract(member, tmp)
+                        with open(os.path.join(tmp, member), 'r') as f:
+                            row_data = json.loads(f.read())
+                            deps = row_data['run_requires'][0].get('requires',[])
+            else:
+                tar = tarfile.open(self.original_source_path)
+                for member in tar.getmembers():
+                    if 'PKG-INFO' in member.name and not info_found: # PKG-INFO is also in the egg-info
+                        tar.extract(member, tmp)
+                        return_info = self._get_metadata(
+                                os.path.join(tmp, member.name))
+                        info_found = True
+                    if 'requires' in member.name:
+                        tar.extract(member, tmp)
+                        with open(os.path.join(tmp, member.name), 'r') as f:
+                            for line in f.readlines():
+                                line = line.strip('\n')
+                                deps.append(line)
         return_info['dependencies'] = [x.lower() for x in deps]
         return return_info
 
